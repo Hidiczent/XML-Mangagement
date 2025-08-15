@@ -2,9 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+
+@import "@fontsource/noto-sans/400.css";
+@import "@fontsource/noto-sans/500.css";
+@import "@fontsource/noto-sans/700.css";
+
 /* ตัวอย่าง: class กลางๆใช้ซ้ำได้ */
 @layer components {
-  .container-page {
-    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
-  }
+  
 }

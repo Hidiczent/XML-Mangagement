@@ -6,6 +6,13 @@ export default {
   ],
   theme: {
     extend: {},
+    colors: {
+        main: "#505991",
+        secondary: "#FFFFFF",
+      },
+      fontFamily: {
+        lao: ['"Noto Sans Lao"', 'sans-serif'],
+      },
   },
   plugins: [],
 };

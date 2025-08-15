@@ -17,12 +17,37 @@ export default function Navbar() {
             Home
           </NavLink>
           <NavLink
-            to="/about"
+            to="/Audit_log"
             className={({ isActive }) =>
               isActive ? "text-blue-600" : "text-gray-700"
             }
           >
-            About
+            Audit_log
+          </NavLink>
+          <NavLink
+            to="/Report"
+            className={({ isActive }) =>
+              isActive ? "text-blue-600" : "text-gray-700"
+            }
+          >
+            Report
+          </NavLink>
+          <NavLink
+            to="/Profile"
+            className={({ isActive }) =>
+              isActive ? "text-blue-600" : "text-gray-700"
+            }
+          >
+            Profile
+          </NavLink>
+          
+          <NavLink
+            to="/SignInForm"
+            className={({ isActive }) =>
+              isActive ? "text-blue-600" : "text-gray-700"
+            }
+          >
+            SignIn
           </NavLink>
         </nav>
       </div>
