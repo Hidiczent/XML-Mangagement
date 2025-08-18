@@ -5,7 +5,7 @@ export default function Navbar() {
     <header className="border-b bg-white/70 backdrop-blur">
       <div className="container-page h-14 flex items-center justify-between">
         <Link to="/" className="font-bold text-lg">
-          MyReactApp
+          XML Management
         </Link>
         <nav className="flex items-center gap-6">
           <NavLink
