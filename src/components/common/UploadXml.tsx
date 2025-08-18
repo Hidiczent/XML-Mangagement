@@ -142,6 +142,65 @@ const toList = (v?: string) =>
     .filter(Boolean);
 const fromList = (items: string[]) => items.join(";");
 
+/* ===== SearchBar: แยกช่องค้นหาอยู่นอก table ===== */
+function SearchBar({
+  value,
+  onChange,
+  field,
+  onFieldChange,
+  columns,
+  className = "",
+}: {
+  value: string;
+  onChange: (s: string) => void;
+  field: string;
+  onFieldChange: (s: string) => void;
+  columns: string[];
+  className?: string;
+}) {
+  return (
+    <div className={"rounded-2xl border bg-white p-3 shadow-sm " + className}>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr,220px]">
+        <div className="relative">
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={`ค้นหา${
+              field === "__ALL__" ? " (ทุกคอลัมน์)" : ` ใน ${field}`
+            }`}
+            className="w-full rounded-xl border px-3 py-2 pl-9 text-base focus:outline-none focus:ring-2 focus:ring-indigo-200 text-gray-900 placeholder-gray-400"
+          />
+          <span className="pointer-events-none absolute left-3 top-2.5 opacity-60">
+            🔎
+          </span>
+          {value && (
+            <button
+              className="absolute right-2 top-1.5 rounded px-2 text-gray-400 hover:text-gray-600"
+              onClick={() => onChange("")}
+              title="Clear"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        <select
+          value={field}
+          onChange={(e) => onFieldChange(e.target.value)}
+          className="rounded-xl border px-3 py-2 text-sm text-gray-900"
+        >
+          <option value="__ALL__">ทุกคอลัมน์</option>
+          {columns.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 /** ===== ListCell (Portal) — กัน dropdown โดนตัดด้วย overflow ===== */
 function ListCell({
   value,
@@ -209,12 +268,13 @@ function ListCell({
   const portal = open
     ? ReactDOM.createPortal(
         <div
-          className="fixed z-[9999] rounded-2xl border bg-white p-3 shadow-2xl"
+          className="fixed z-[9999] rounded-2xl border bg-white p-3 shadow-2xl box-border"
           style={{ top: pos.top, left: pos.left, width: pos.width }}
         >
           <div className="mb-2 text-xs text-gray-500">
             Manage list (คั่นด้วย <code>;</code>)
           </div>
+
           <div className="flex max-h-48 flex-wrap gap-2 overflow-auto pr-1">
             {items.map((it, i) => (
               <Chip key={`${it}-${i}`} onRemove={() => removeAt(i)}>
@@ -226,7 +286,8 @@ function ListCell({
             )}
           </div>
 
-          <div className="mt-3 flex items-center gap-2">
+          {/* ✅ แถวล่าง: ใช้ grid 3 คอลัมน์ 1fr auto auto */}
+          <div className="mt-3 grid grid-cols-[1fr,auto,auto] items-center gap-2">
             <input
               autoFocus
               value={draft}
@@ -238,20 +299,22 @@ function ListCell({
                 }
                 if (e.key === "Escape") setOpen(false);
               }}
-              placeholder="พิมพ์ค่าแล้วกด Add หรือ Enter"
-              className="flex-1 rounded-lg border px-2 py-1"
+              placeholder="พิมพ์ค่า…"
+              className="min-w-0 h-9 rounded-lg border px-2 text-sm text-gray-900 placeholder-gray-400"
             />
+
             <button
               type="button"
               onClick={add}
-              className="rounded-lg bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-700"
+              className="h-9 rounded-lg bg-indigo-600 px-3 text-sm text-white hover:bg-indigo-700"
             >
-              + Add
+              Add
             </button>
+
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50"
+              className="h-9 rounded-lg border px-3 text-sm hover:bg-gray-50"
             >
               Done
             </button>
@@ -267,7 +330,7 @@ function ListCell({
         <input
           readOnly
           value={count ? `(มี ${count} ${label})` : "(empty)"}
-          className="w-full rounded-lg border bg-white px-2 py-1"
+          className="w-full rounded-lg border bg-white px-2 py-1 text-gray-900"
         />
         <button
           type="button"
@@ -304,8 +367,9 @@ export default function UploadXml() {
   const [listFields, setListFields] = useState<Set<string>>(new Set());
   const [filterKey, setFilterKey] = useState<string | null>(null);
 
-  // server-side filter by ID (now shown on toolbar)
+  // server-side filter
   const [filterId, setFilterId] = useState<string>("__ALL__");
+  const allIdsRef = useRef<string[]>([]); // cache id ทั้งหมดสำหรับ dropdown
 
   // client-side search
   const [search, setSearch] = useState("");
@@ -350,11 +414,7 @@ export default function UploadXml() {
     resp && selectedVersion !== null && users.length > 0 && dirty
   );
 
-  const idsForFilter = useMemo(() => {
-    const s = new Set<string>();
-    users.forEach((u) => s.add(u.id));
-    return ["__ALL__", ...Array.from(s).sort()];
-  }, [users]);
+  const idsForFilter = useMemo(() => ["__ALL__", ...allIdsRef.current], []);
 
   const fallbackColumns = useMemo(() => {
     const keys = new Set<string>();
@@ -452,9 +512,7 @@ export default function UploadXml() {
     }
   };
 
-  /**
-   * โหลด users (รองรับกรองแบบ server-side โดยส่งพารามิเตอร์ตาม filterKey จาก schema)
-   */
+  /** โหลด users (ส่งพารามิเตอร์กรองทั้งชื่อใหม่และสำรอง userId) */
   const loadUsers = async (
     fileId: string,
     version?: number,
@@ -465,10 +523,10 @@ export default function UploadXml() {
       const params: Record<string, string | number> = {};
       if (version) params.version = version;
 
-      // กรองตาม filterKey แบบไดนามิก (เช่น "id") — ถ้าเป็น "__ALL__" จะไม่ส่งพารามิเตอร์
       const key = (filterKey || "id").trim();
       if (idFilterCsv && idFilterCsv.trim() && idFilterCsv !== "__ALL__") {
-        params[key] = idFilterCsv.trim();
+        params[key] = idFilterCsv.trim(); // ใหม่ตาม schema
+        params["userId"] = idFilterCsv.trim(); // สำรองสำหรับ backend เก่า
       }
 
       const { data } = await axios.get<UsersResp>(
@@ -478,6 +536,12 @@ export default function UploadXml() {
       setUsers(data.users);
       setFormat(data.format || "—");
       setSelectedVersion(data.version);
+
+      if (!idFilterCsv || idFilterCsv === "__ALL__") {
+        const setAll = new Set(allIdsRef.current);
+        data.users.forEach((u) => setAll.add(u.id));
+        allIdsRef.current = Array.from(setAll).sort();
+      }
 
       await loadSchema(fileId, data.version);
 
@@ -500,7 +564,7 @@ export default function UploadXml() {
 
   /* ----- actions ----- */
   const upload = async () => {
-    if (!file) return flash("ກາລຸນາເລືອກໄຟລກ່ອນ", "error");
+    if (!file) return flash("ກາລຸນາເລ▯ອກໄຟລກ່ອນ", "error");
     setProgress(0);
     try {
       const fd = new FormData();
@@ -520,9 +584,10 @@ export default function UploadXml() {
 
       setResp(data);
       setSelectedVersion(data.version);
+      allIdsRef.current = [];
       await Promise.all([
         loadVersions(data.fileId),
-        loadUsers(data.fileId, data.version, filterId),
+        loadUsers(data.fileId, data.version, "__ALL__"),
       ]);
       flash("อัปโหลดสำเร็จ ✓", "success");
     } catch (e: unknown) {
@@ -582,7 +647,6 @@ export default function UploadXml() {
     setDirty(true);
   };
 
-  // Auto-save draft
   useEffect(() => {
     if (!resp || selectedVersion == null) return;
     if (!dirty) return;
@@ -608,7 +672,6 @@ export default function UploadXml() {
     }
   };
 
-  // guards: beforeunload + block refresh key
   useEffect(() => {
     const beforeUnload = (e: BeforeUnloadEvent) => {
       if (!dirty) return;
@@ -647,7 +710,6 @@ export default function UploadXml() {
     await loadUsers(fileId, versionNo, filterId);
   };
 
-  // เมื่อเปลี่ยน filterId จาก toolbar ให้รีโหลดทันที
   useEffect(() => {
     if (!resp) return;
     loadUsers(resp.fileId, selectedVersion ?? undefined, filterId);
@@ -694,14 +756,13 @@ export default function UploadXml() {
                   isServiceType(e.target.value) &&
                   setServiceType(e.target.value)
                 }
-                className="mt-1 w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-200"
+                className="mt-1 w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-200 text-gray-900"
               >
                 <option value="LTCBANKING">LTCBANKING</option>
                 <option value="REFILL_LUCKYDRAW">REFILL_LUCKYDRAW</option>
               </select>
             </div>
 
-            {/* Drag & drop */}
             <div
               onDragEnter={(e) => {
                 e.preventDefault();
@@ -739,7 +800,6 @@ export default function UploadXml() {
               />
             </div>
 
-            {/* Progress */}
             {progress > 0 && progress < 100 && (
               <div className="mt-3">
                 <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
@@ -797,7 +857,6 @@ export default function UploadXml() {
               )}
             </div>
 
-            {/* Summary */}
             {resp && (
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl bg-gray-50 p-3">
@@ -874,123 +933,73 @@ export default function UploadXml() {
               )}
             </ul>
           </Panel>
-
-          <Panel title="Schema" loading={loadingSchema}>
-            <div className="space-y-3 text-sm">
-              <div>
-                <div className="text-gray-500">filterKey</div>
-                <div className="font-medium">{filterKey ?? "—"}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">columns</div>
-                <div className="break-words font-medium">
-                  {columns.length ? columns.join(", ") : "(dynamic by data)"}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500">listFields</div>
-                <div className="break-words font-medium">
-                  {columns.length
-                    ? Array.from(listFields).join(", ")
-                    : "(auto-detected ‘;’ fields)"}
-                </div>
-              </div>
-            </div>
-          </Panel>
         </div>
 
-        {/* Right content */}
-        <div className="lg:col-span-9 xl:col-span-9">
-          {/* sticky toolbar (2 แถว) + Filter by User ID moved here */}
-          <div
-            ref={toolbarRef}
-            className="sticky top-0 z-40 mb-3 -mt-2 rounded-xl border bg-white/90 p-3 shadow-sm backdrop-blur"
-          >
-            {/* แถวบน */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex min-w-[240px] flex-1 items-center gap-2 text-sm">
-                <span className="font-medium">Users</span>
-                {selectedVersion && (
-                  <>
-                    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs">
-                      v{selectedVersion}
+        {/* Right content: Table + Schema side-by-side */}
+        <div className="lg:col-span-9 xl:col-span-9 grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Table block */}
+          <div className="lg:col-span-9">
+            {/* sticky toolbar — แถวบนเฉพาะชื่อ+ปุ่ม */}
+            <div
+              ref={toolbarRef}
+              className="sticky top-0 z-40 mb-3 -mt-2 rounded-xl border bg-white/90 p-3 shadow-sm backdrop-blur"
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex min-w-[240px] flex-1 items-center gap-2 text-sm">
+                  <span className="font-medium">Users</span>
+                  {selectedVersion && (
+                    <>
+                      <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs">
+                        v{selectedVersion}
+                      </span>
+                      <span className="ml-1 text-gray-500">
+                        • format {format}
+                      </span>
+                    </>
+                  )}
+                  {dirty && (
+                    <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                      Unsaved
                     </span>
-                    <span className="ml-1 text-gray-500">
-                      • format {format}
-                    </span>
-                  </>
-                )}
-                {dirty && (
-                  <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                    Unsaved
-                  </span>
-                )}
-              </div>
+                  )}
+                </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={addRow}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
-                >
-                  + Add row
-                </button>
-                <button
-                  type="button"
-                  onClick={saveUsers}
-                  disabled={!canSave}
-                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white shadow hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
-                >
-                  Save as new version
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={addRow}
+                    className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
+                  >
+                    + Add row
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveUsers}
+                    disabled={!canSave}
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white shadow hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                  >
+                    Save as new version
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* แถวล่าง */}
-            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr,220px,220px,auto]">
-              <div className="relative">
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={`ค้นหา${
-                    searchField === "__ALL__"
-                      ? " (ทุกคอลัมน์)"
-                      : ` ใน ${searchField}`
-                  }`}
-                  className="w-full rounded-xl border px-3 py-2 pl-9 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                />
-                <span className="pointer-events-none absolute left-3 top-2.5 text-gray-400">
-                  🔎
-                </span>
-                {search && (
-                  <button
-                    className="absolute right-2 top-1.5 rounded px-2 text-gray-400 hover:text-gray-600"
-                    onClick={() => setSearch("")}
-                    title="Clear"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
+            {/* ✅ SearchBar แยกอยู่นอก table */}
+            <SearchBar
+              value={search}
+              onChange={setSearch}
+              field={searchField}
+              onFieldChange={setSearchField}
+              columns={columnsToRender}
+              className="mb-3"
+            />
 
-              <select
-                value={searchField}
-                onChange={(e) => setSearchField(e.target.value)}
-                className="rounded-xl border px-3 py-2 text-sm"
-              >
-                <option value="__ALL__">ทุกคอลัมน์</option>
-                {columnsToRender.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-
-              {/* Filter by User ID on toolbar */}
+            {/* แถวเครื่องมือ: Filter ID + Wrap */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <select
                 value={filterId}
                 onChange={(e) => setFilterId(e.target.value)}
-                className="rounded-xl border px-3 py-2 text-sm"
+                className="rounded-xl border px-3 py-2 text-sm text-gray-900"
                 title="Filter by User ID (server)"
               >
                 {idsForFilter.map((id) => (
@@ -1000,7 +1009,7 @@ export default function UploadXml() {
                 ))}
               </select>
 
-              <label className="flex items-center justify-start gap-2 rounded-xl border px-3 text-sm md:justify-center">
+              <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm">
                 <input
                   type="checkbox"
                   checked={wrapCells}
@@ -1008,150 +1017,183 @@ export default function UploadXml() {
                 />
                 ห่อบรรทัด
               </label>
-            </div>
-          </div>
 
-          {/* Active Filters line (แสดงด้านบน table) */}
-          {filterId && filterId !== "__ALL__" && (
-            <div className="mb-2 flex items-center gap-2 text-sm">
-              <span className="text-gray-500">Filters:</span>
-              <Chip onRemove={() => setFilterId("__ALL__")}>
-                {filterKey || "id"}:{" "}
-                <span className="ml-1 font-medium">{filterId}</span>
-              </Chip>
+              {filterId !== "__ALL__" && (
+                <Chip onRemove={() => setFilterId("__ALL__")}>
+                  {filterKey || "id"}:{" "}
+                  <span className="ml-1 font-medium">{filterId}</span>
+                </Chip>
+              )}
             </div>
-          )}
 
-          {/* table */}
-          <div
-            className="relative overflow-x-auto rounded-xl border"
-            style={{ overflowY: "visible" }}
-          >
-            <table
-              className={`min-w-[1024px] w-full text-sm ${
-                wrapCells ? "table-fixed" : "table-auto"
-              }`}
+            {/* table */}
+            <div
+              className="relative overflow-x-auto rounded-xl border"
+              style={{ overflowY: "visible" }}
             >
-              <thead
-                className="bg-gray-50 z-10"
-                style={{ position: "sticky", top: 0 }}
+              <table
+                className={`min-w-[1024px] w-full text-sm ${
+                  wrapCells ? "table-fixed" : "table-auto"
+                }`}
               >
-                <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium [&>th]:text-gray-600 [&>th]:whitespace-nowrap">
-                  {columnsToRender.map((c, idx) => (
-                    <th
-                      key={c}
-                      className={`capitalize ${
-                        idx === 0 ? "sticky left-0 z-20 bg-gray-50" : ""
-                      } ${wrapCells ? "truncate" : ""}`}
-                      style={{ minWidth: idx === 0 ? 140 : 160 }}
-                      title={c}
-                    >
-                      {c.replace(/_/g, " ")}
-                    </th>
-                  ))}
-                  <th className="w-20"></th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loadingUsers ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <tr key={`sk-${i}`} className="border-t">
-                      {columnsToRender.map((c, j) => (
-                        <td key={`${c}-${j}`} className="px-3 py-2">
-                          <div className="h-8 w-full animate-pulse rounded-lg bg-gray-200" />
-                        </td>
-                      ))}
-                      <td className="px-3 py-2">
-                        <div className="h-7 w-16 animate-pulse rounded-lg bg-gray-200" />
-                      </td>
-                    </tr>
-                  ))
-                ) : visibleUsers.length ? (
-                  visibleUsers.map((row, i) => (
-                    <tr key={i} className="border-t">
-                      {columnsToRender.map((c, idx) => (
-                        <td
-                          key={c}
-                          className={`px-3 py-2 align-top ${
-                            wrapCells
-                              ? "whitespace-normal"
-                              : "whitespace-nowrap"
-                          } ${idx === 0 ? "sticky left-0 z-10 bg-white" : ""}`}
-                          style={{ minWidth: idx === 0 ? 140 : 160 }}
-                        >
-                          {c === "id" || !listFields.has(c) ? (
-                            <input
-                              value={row[c] ?? ""}
-                              onChange={(e) => setCell(i, c, e.target.value)}
-                              className="w-full h-9 rounded-lg border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                            />
-                          ) : (
-                            <ListCell
-                              value={row[c] ?? ""}
-                              onChange={(next) => setCell(i, c, next)}
-                              label="items"
-                            />
-                          )}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => removeRow(i)}
-                          className="rounded-lg border px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                          title="Remove row"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={columnsToRender.length + 1}
-                      className="px-3 py-12 text-center text-gray-500"
-                    >
-                      ไม่พบบรรทัดที่ตรงกับเงื่อนไข
-                    </td>
+                <thead
+                  className="bg-gray-50 z-10"
+                  style={{ position: "sticky", top: 0 }}
+                >
+                  <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium [&>th]:text-gray-600 [&>th]:whitespace-nowrap">
+                    {columnsToRender.map((c, idx) => (
+                      <th
+                        key={c}
+                        className={`capitalize ${
+                          idx === 0 ? "sticky left-0 z-20 bg-gray-50" : ""
+                        } ${wrapCells ? "truncate" : ""}`}
+                        style={{ minWidth: idx === 0 ? 160 : 180 }}
+                        title={c}
+                      >
+                        {c.replace(/_/g, " ")}
+                      </th>
+                    ))}
+                    <th className="w-20"></th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
 
-            {loadingSchema && (
-              <div className="absolute inset-0 z-20 grid place-items-center rounded-xl bg-white/40">
-                <div className="flex items-center gap-2 text-indigo-700">
-                  <Spinner />
-                  <span className="text-sm">Preparing schema…</span>
+                <tbody>
+                  {loadingUsers ? (
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={`sk-${i}`} className="border-t">
+                        {columnsToRender.map((c, j) => (
+                          <td key={`${c}-${j}`} className="px-3 py-2">
+                            <div className="h-8 w-full animate-pulse rounded-lg bg-gray-200" />
+                          </td>
+                        ))}
+                        <td className="px-3 py-2">
+                          <div className="h-7 w-16 animate-pulse rounded-lg bg-gray-200" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : visibleUsers.length ? (
+                    visibleUsers.map((row, i) => (
+                      <tr key={i} className="border-t">
+                        {columnsToRender.map((c, idx) => (
+                          <td
+                            key={c}
+                            className={[
+                              "px-3 py-2 align-top",
+                              wrapCells
+                                ? "whitespace-pre-wrap break-words break-all"
+                                : "whitespace-nowrap",
+                              idx === 0
+                                ? "sticky left-0 z-10 bg-white shadow-[inset_-8px_0_8px_-8px_rgba(0,0,0,0.06)]"
+                                : "",
+                            ].join(" ")}
+                            style={{ minWidth: idx === 0 ? 160 : 180 }}
+                          >
+                            {c === "id" || !listFields.has(c) ? (
+                              <input
+                                value={row[c] ?? ""}
+                                onChange={(e) => setCell(i, c, e.target.value)}
+                                className={[
+                                  "w-full h-9 rounded-lg border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200",
+                                  wrapCells ? "min-h-[2.25rem]" : "",
+                                  "text-gray-900 placeholder-gray-400",
+                                ].join(" ")}
+                              />
+                            ) : (
+                              <ListCell
+                                value={row[c] ?? ""}
+                                onChange={(next) => setCell(i, c, next)}
+                                label="items"
+                              />
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => removeRow(i)}
+                            className="rounded-lg border px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                            title="Remove row"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={columnsToRender.length + 1}
+                        className="px-3 py-12 text-center text-gray-500"
+                      >
+                        ไม่พบบรรทัดที่ตรงกับเงื่อนไข
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              {loadingSchema && (
+                <div className="absolute inset-0 z-20 grid place-items-center rounded-xl bg-white/40">
+                  <div className="flex items-center gap-2 text-indigo-700">
+                    <Spinner />
+                    <span className="text-sm">Preparing schema…</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {showRestore && (
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                <div className="text-sm">
+                  พบฉบับร่างการแก้ไขก่อนหน้า ต้องการกู้คืนหรือไม่?
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={restoreDraft}
+                    className="rounded-lg bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700"
+                  >
+                    Restore draft
+                  </button>
+                  <button
+                    onClick={() => setShowRestore(false)}
+                    className="rounded-lg border px-3 py-1 text-xs hover:bg-white"
+                  >
+                    Dismiss
+                  </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* restore draft banner */}
-          {showRestore && (
-            <div className="mt-3 flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900">
-              <div className="text-sm">
-                พบฉบับร่างการแก้ไขก่อนหน้า ต้องการกู้คืนหรือไม่?
+          {/* Schema panel ขวาของ table */}
+          <div className="lg:col-span-3">
+            <Panel
+              title="Schema"
+              loading={loadingSchema}
+              className="lg:sticky lg:top-2 lg:h-fit"
+            >
+              <div className="space-y-3 text-sm">
+                <div>
+                  <div className="text-gray-500">filterKey</div>
+                  <div className="font-medium">{filterKey ?? "—"}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">columns</div>
+                  <div className="break-words font-medium">
+                    {columns.length ? columns.join(", ") : "(dynamic by data)"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-gray-500">listFields</div>
+                  <div className="break-words font-medium">
+                    {listFields.size
+                      ? Array.from(listFields).join(", ")
+                      : "(auto-detected ‘;’ fields)"}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={restoreDraft}
-                  className="rounded-lg bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700"
-                >
-                  Restore draft
-                </button>
-                <button
-                  onClick={() => setShowRestore(false)}
-                  className="rounded-lg border px-3 py-1 text-xs hover:bg-white"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          )}
+            </Panel>
+          </div>
         </div>
       </div>
     </div>
