@@ -1,4 +1,4 @@
-import UploadXml from "@/components/common/UploadXml";
+import UploadXml from "@/components/UploadXml";
 import useTitle from "@/hooks/useTitle";
 
 export default function HomePage() {
